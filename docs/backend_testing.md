@@ -2,6 +2,20 @@
 
 This guide provides `curl` commands to test the new features implemented in the StellarYield backend.
 
+## Metrics endpoints (production protection)
+
+In production, metrics endpoints are protected by `METRICS_TOKEN` and return **404** when unauthorized to avoid advertising the endpoint:
+
+- JSON metrics: `GET /api/metrics`
+- Prometheus scrape: `GET /metrics`
+
+Both accept either:
+
+- `Authorization: Bearer <token>` or
+- `x-metrics-token: <token>`
+
+For **token rotation steps** and post-rotation validation commands, see [docs/metrics-token-rotation.md](./metrics-token-rotation.md).
+
 ## 1. APY Attribution Breakdown (#287)
 
 Fetch the yield data to see the new `attribution` object for each protocol.
