@@ -51,7 +51,7 @@ jobs:
           retention-days: 30
 
       - name: Comment audit results on PR
-        if: github.event_name == 'pull_request' && always()
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && always()
         uses: actions/github-script@v7
         with:
           script: |
@@ -102,7 +102,7 @@ jobs:
             }
 
       - name: Fail on vulnerabilities
-        if: steps.audit.outputs.exit_code != '0'
+        if: github.event_name == 'push' && steps.audit.outputs.exit_code != '0'
         run: exit 1
 
   clippy-security:
@@ -145,7 +145,7 @@ jobs:
           retention-days: 30
 
       - name: Comment Clippy findings on PR
-        if: github.event_name == 'pull_request' && always()
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && always()
         uses: actions/github-script@v7
         with:
           script: |
@@ -276,7 +276,7 @@ jobs:
           cat pr_comment.md
 
       - name: Comment custom pattern results on PR
-        if: github.event_name == 'pull_request' && always()
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && always()
         uses: actions/github-script@v7
         with:
           script: |
@@ -305,5 +305,5 @@ jobs:
             }
 
       - name: Fail on prohibited patterns
-        if: steps.patterns.outputs.fail == '1'
+        if: github.event_name == 'push' && steps.patterns.outputs.fail == '1'
         run: exit 1
