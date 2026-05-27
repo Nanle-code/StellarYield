@@ -1,21 +1,31 @@
 /**
  * Soroban Transaction Engine
  *
- * Constructs, signs via Freighter, and submits Soroban contract calls.
+ * Constructs, signs via the active wallet adapter, and submits Soroban contract calls.
  * Designed to work with the YieldVault contract for deposit/withdraw.
  */
 
 import * as StellarSdk from "@stellar/stellar-sdk";
 import freighter from "@stellar/freighter-api";
+import type { TxPhase } from "./transactionPhase";
+import { resolveDeadlineSeconds, type TxSettings } from "../features/settings/types";
 
 // ── Configuration ───────────────────────────────────────────────────────
 
-const RPC_URL = import.meta.env.VITE_SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org";
-const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE ?? "Test SDF Network ; September 2015";
+export const RPC_URL = import.meta.env.VITE_SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org";
+export const NETWORK_PASSPHRASE =
+  import.meta.env.VITE_NETWORK_PASSPHRASE ?? "Test SDF Network ; September 2015";
 const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID ?? "";
+const ZAP_CONTRACT_ID = import.meta.env.VITE_ZAP_CONTRACT_ID ?? "";
 
 const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 30_000;
+
+type FeePriority = "low" | "average" | "high";
+
+interface FeeOraclePayload {
+  fees?: Partial<Record<FeePriority, number>>;
+}
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -25,12 +35,35 @@ export interface TxResult {
   error?: string;
 }
 
-export type TxStatus = "idle" | "building" | "signing" | "submitting" | "confirming" | "success" | "error";
+/** Lifecycle phases for Soroban flows (timeline + callbacks). */
+export type { TxPhase };
+
+/** @deprecated Prefer `TxPhase`; kept for older call sites. */
+export type TxStatus = TxPhase;
+
+export type TxPhaseCallback = (phase: TxPhase) => void;
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 function getServer(): StellarSdk.rpc.Server {
   return new StellarSdk.rpc.Server(RPC_URL);
+}
+
+async function getRecommendedBaseFee(priority: FeePriority = "average"): Promise<string> {
+  try {
+    const response = await fetch("/api/fees");
+    if (!response.ok) {
+      return StellarSdk.BASE_FEE;
+    }
+    const payload = (await response.json()) as FeeOraclePayload;
+    const fee = payload.fees?.[priority];
+    if (!fee || !Number.isFinite(fee) || fee <= 0) {
+      return StellarSdk.BASE_FEE;
+    }
+    return String(Math.round(fee));
+  } catch {
+    return StellarSdk.BASE_FEE;
+  }
 }
 
 function getContract(): StellarSdk.Contract {
@@ -40,27 +73,42 @@ function getContract(): StellarSdk.Contract {
   return new StellarSdk.Contract(CONTRACT_ID);
 }
 
+export function getZapContract(): StellarSdk.Contract {
+  if (!ZAP_CONTRACT_ID) {
+    throw new Error("VITE_ZAP_CONTRACT_ID is not configured");
+  }
+  return new StellarSdk.Contract(ZAP_CONTRACT_ID);
+}
+
 /**
  * Build a Soroban contract call transaction, simulate it, and return
  * the assembled (ready-to-sign) XDR.
+ *
+ * @param txSettings - Optional user transaction settings (deadline injected here).
  */
-async function buildContractCall(
+async function buildContractCallOn(
+  contract: StellarSdk.Contract,
   sourcePublicKey: string,
   method: string,
-  ...args: StellarSdk.xdr.ScVal[]
+  args: StellarSdk.xdr.ScVal[],
+  onPhase?: TxPhaseCallback,
+  txSettings?: TxSettings,
 ): Promise<string> {
+  onPhase?.("building");
   const server = getServer();
-  const contract = getContract();
   const source = await server.getAccount(sourcePublicKey);
+  const baseFee = await getRecommendedBaseFee("average");
+  const timeoutSeconds = txSettings ? resolveDeadlineSeconds(txSettings) : 30;
 
   const tx = new StellarSdk.TransactionBuilder(source, {
-    fee: StellarSdk.BASE_FEE,
+    fee: baseFee,
     networkPassphrase: NETWORK_PASSPHRASE,
   })
     .addOperation(contract.call(method, ...args))
-    .setTimeout(30)
+    .setTimeout(timeoutSeconds)
     .build();
 
+  onPhase?.("simulating");
   const simulated = await server.simulateTransaction(tx);
 
   if (StellarSdk.rpc.Api.isSimulationError(simulated)) {
@@ -76,12 +124,23 @@ async function buildContractCall(
   return assembled.toXDR();
 }
 
+async function buildContractCall(
+  sourcePublicKey: string,
+  method: string,
+  args: StellarSdk.xdr.ScVal[],
+  onPhase?: TxPhaseCallback,
+  txSettings?: TxSettings,
+): Promise<string> {
+  return buildContractCallOn(getContract(), sourcePublicKey, method, args, onPhase, txSettings);
+}
+
 /**
  * Sign a transaction XDR with the user's Freighter wallet.
+ * @deprecated Use `signTransaction` parameter in `executeContractCall` instead.
  */
-async function signWithFreighter(xdr: string): Promise<string> {
+async function signWithFreighter(xdr: string, networkPassphrase: string): Promise<string> {
   const signed = await freighter.signTransaction(xdr, {
-    networkPassphrase: NETWORK_PASSPHRASE,
+    networkPassphrase,
   });
   const signedXdr = signed?.signedTxXdr;
   if (!signedXdr) throw new Error("Transaction was rejected by wallet");
@@ -92,7 +151,8 @@ async function signWithFreighter(xdr: string): Promise<string> {
  * Submit a signed transaction to the Soroban RPC and poll until
  * it reaches a terminal state.
  */
-async function submitAndPoll(signedXdr: string): Promise<TxResult> {
+async function submitAndPoll(signedXdr: string, onPhase?: TxPhaseCallback): Promise<TxResult> {
+  onPhase?.("submitting");
   const server = getServer();
   const tx = StellarSdk.TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
   const sendResponse = await server.sendTransaction(tx);
@@ -108,6 +168,7 @@ async function submitAndPoll(signedXdr: string): Promise<TxResult> {
   const deadline = Date.now() + POLL_TIMEOUT_MS;
   let result = await server.getTransaction(hash);
 
+  onPhase?.("polling");
   while (
     result.status === StellarSdk.rpc.Api.GetTransactionStatus.NOT_FOUND &&
     Date.now() < deadline
@@ -127,50 +188,75 @@ async function submitAndPoll(signedXdr: string): Promise<TxResult> {
   return { success: false, hash, error: "Transaction timed out" };
 }
 
+/**
+ * Submit an already-signed transaction XDR (e.g. governance multisig) and poll for inclusion.
+ */
+export async function submitSignedXdrAndPoll(
+  signedXdr: string,
+  onPhase?: TxPhaseCallback,
+): Promise<TxResult> {
+  try {
+    const result = await submitAndPoll(signedXdr, onPhase);
+    onPhase?.(result.success ? "success" : "failure");
+    return result;
+  } catch (err) {
+    onPhase?.("failure");
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 // ── Public API ──────────────────────────────────────────────────────────
 
 /**
  * Execute a full contract call: build → sign → submit → poll.
  *
- * @param sourcePublicKey - Caller's Stellar public key
- * @param method          - Contract method name (e.g. "deposit")
- * @param args            - ScVal arguments
- * @param onStatus        - Optional callback for status updates
- * @returns Transaction result
+ * @param sourcePublicKey  - Caller's Stellar public key
+ * @param method           - Contract method name (e.g. "deposit")
+ * @param args             - ScVal arguments
+ * @param onPhase         - Optional callback for phase updates (timeline)
+ * @param useFeeBump       - Whether to wrap the tx in a fee-bump via the relayer
+ * @param signTx           - Optional signer function; defaults to Freighter for
+ *                           backwards compatibility. Pass `wallet.signTransaction`
+ *                           from `useWallet()` to use the active wallet adapter.
+ * @param txSettings       - Optional user transaction settings (slippage, deadline).
  */
 export async function executeContractCall(
   sourcePublicKey: string,
   method: string,
   args: StellarSdk.xdr.ScVal[],
-  onStatus?: (status: TxStatus) => void,
-  useFeeBump: boolean = false
+  onPhase?: TxPhaseCallback,
+  useFeeBump: boolean = false,
+  signTx?: (xdr: string, networkPassphrase: string) => Promise<string>,
+  txSettings?: TxSettings,
 ): Promise<TxResult> {
   try {
-    onStatus?.("building");
-    const xdr = await buildContractCall(sourcePublicKey, method, ...args);
+    const xdr = await buildContractCall(sourcePublicKey, method, args, onPhase, txSettings);
 
-    onStatus?.("signing");
-    const signedXdr = await signWithFreighter(xdr);
+    onPhase?.("waiting_for_wallet");
+    const signer = signTx ?? ((x: string, p: string) => signWithFreighter(x, p));
+    const signedXdr = await signer(xdr, NETWORK_PASSPHRASE);
 
     let finalXdr = signedXdr;
     if (useFeeBump) {
-      onStatus?.("submitting");
-      const resp = await fetch('/api/relayer/fee-bump', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ innerTxXdr: signedXdr })
+      onPhase?.("submitting");
+      const resp = await fetch("/api/relayer/fee-bump", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ innerTxXdr: signedXdr }),
       });
       const { feeBumpXdr } = await resp.json();
       finalXdr = feeBumpXdr;
     }
 
-    onStatus?.("submitting");
-    const result = await submitAndPoll(finalXdr);
+    const result = await submitAndPoll(finalXdr, onPhase);
 
-    onStatus?.(result.success ? "success" : "error");
+    onPhase?.(result.success ? "success" : "failure");
     return result;
   } catch (err) {
-    onStatus?.("error");
+    onPhase?.("failure");
     return {
       success: false,
       error: err instanceof Error ? err.message : String(err),
@@ -179,17 +265,114 @@ export async function executeContractCall(
 }
 
 /**
+ * Invoke a method on the Zap contract (swap + `deposit_for` in one tx).
+ *
+ * Uses the same build → sign → submit flow as `executeContractCall`.
+ *
+ * @param txSettings - Optional user transaction settings (slippage, deadline).
+ */
+export async function executeZapContractCall(
+  sourcePublicKey: string,
+  method: string,
+  args: StellarSdk.xdr.ScVal[],
+  onPhase?: TxPhaseCallback,
+  useFeeBump: boolean = false,
+  txSettings?: TxSettings,
+): Promise<TxResult> {
+  try {
+    const xdr = await buildContractCallOn(getZapContract(), sourcePublicKey, method, args, onPhase, txSettings);
+
+    onPhase?.("waiting_for_wallet");
+    const signedXdr = await signWithFreighter(xdr, NETWORK_PASSPHRASE);
+
+    let finalXdr = signedXdr;
+    if (useFeeBump) {
+      onPhase?.("submitting");
+      const resp = await fetch("/api/relayer/fee-bump", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ innerTxXdr: signedXdr }),
+      });
+      const { feeBumpXdr } = await resp.json();
+      finalXdr = feeBumpXdr;
+    }
+
+    const result = await submitAndPoll(finalXdr, onPhase);
+
+    onPhase?.(result.success ? "success" : "failure");
+    return result;
+  } catch (err) {
+    onPhase?.("failure");
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export interface ZapDepositParams {
+  /** Soroban contract ID of the token the user spends (input). */
+  inputTokenContract: string;
+  /** Soroban contract ID of the vault’s underlying token. */
+  vaultTokenContract: string;
+  /** Yield vault contract ID (same family as `VITE_CONTRACT_ID`). */
+  vaultContractId: string;
+  amountIn: bigint;
+  /** Minimum vault-token amount after swap; enforces slippage on-chain. */
+  minAmountOut: bigint;
+  /** Minimum shares to mint in vault deposit_for. */
+  minSharesOut: bigint;
+}
+
+/**
+ * Submit a single `zap_deposit` call: pull input token, swap via DEX router, deposit into vault.
+ *
+ * @param userAddress - Account that signs and receives vault shares
+ * @param txSettings  - Optional user transaction settings (slippage, deadline).
+ */
+export async function zapDeposit(
+  userAddress: string,
+  params: ZapDepositParams,
+  onPhase?: TxPhaseCallback,
+  useFeeBump: boolean = false,
+  txSettings?: TxSettings,
+): Promise<TxResult> {
+  return executeZapContractCall(
+    userAddress,
+    "zap_deposit",
+    [
+      new StellarSdk.Address(userAddress).toScVal(),
+      new StellarSdk.Address(params.inputTokenContract).toScVal(),
+      new StellarSdk.Address(params.vaultTokenContract).toScVal(),
+      new StellarSdk.Address(params.vaultContractId).toScVal(),
+      StellarSdk.nativeToScVal(params.amountIn, { type: "i128" }),
+      StellarSdk.nativeToScVal(params.minAmountOut, { type: "i128" }),
+      StellarSdk.nativeToScVal(params.minSharesOut, { type: "i128" }),
+    ],
+    onPhase,
+    useFeeBump,
+    txSettings,
+  );
+}
+
+/**
  * Deposit tokens into the YieldVault contract.
  *
  * @param userAddress - Depositor's public key
  * @param amount      - Amount in stroops (1 XLM = 10_000_000 stroops)
- * @param onStatus    - Status callback for UI updates
+ * @param onPhase    - Phase callback for UI updates
+ * @param useFeeBump  - Whether to wrap the tx in a fee-bump via the relayer
+ * @param signTx      - Optional signer; pass `wallet.signTransaction` to use any wallet adapter
+ * @param txSettings  - Optional user transaction settings (slippage, deadline).
  */
 export async function deposit(
   userAddress: string,
   amount: bigint,
-  onStatus?: (status: TxStatus) => void,
-  useFeeBump: boolean = true // Sponsor first deposit by default as per issue
+  minSharesOut: bigint,
+  onPhase?: TxPhaseCallback,
+  useFeeBump: boolean = true,
+  signTx?: (xdr: string, networkPassphrase: string) => Promise<string>,
+  txSettings?: TxSettings,
 ): Promise<TxResult> {
   return executeContractCall(
     userAddress,
@@ -197,9 +380,12 @@ export async function deposit(
     [
       new StellarSdk.Address(userAddress).toScVal(),
       StellarSdk.nativeToScVal(amount, { type: "i128" }),
+      StellarSdk.nativeToScVal(minSharesOut, { type: "i128" }),
     ],
-    onStatus,
-    useFeeBump
+    onPhase,
+    useFeeBump,
+    signTx,
+    txSettings,
   );
 }
 
@@ -208,12 +394,16 @@ export async function deposit(
  *
  * @param userAddress - Withdrawer's public key
  * @param shares      - Number of vault shares to redeem
- * @param onStatus    - Status callback for UI updates
+ * @param onPhase    - Phase callback for UI updates
+ * @param signTx      - Optional signer; pass `wallet.signTransaction` to use any wallet adapter
+ * @param txSettings  - Optional user transaction settings (slippage, deadline).
  */
 export async function withdraw(
   userAddress: string,
   shares: bigint,
-  onStatus?: (status: TxStatus) => void,
+  onPhase?: TxPhaseCallback,
+  signTx?: (xdr: string, networkPassphrase: string) => Promise<string>,
+  txSettings?: TxSettings,
 ): Promise<TxResult> {
   return executeContractCall(
     userAddress,
@@ -222,6 +412,9 @@ export async function withdraw(
       new StellarSdk.Address(userAddress).toScVal(),
       StellarSdk.nativeToScVal(shares, { type: "i128" }),
     ],
-    onStatus,
+    onPhase,
+    false,
+    signTx,
+    txSettings,
   );
 }

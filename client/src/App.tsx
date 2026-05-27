@@ -15,6 +15,18 @@ import ConnectWalletButton from "./components/wallet/ConnectWalletButton";
 import NotificationBell from "./components/Navigation/NotificationBell";
 import Leaderboard from "./pages/leaderboard/Leaderboard";
 import OnRampModal from "./features/onramp/OnRampModal";
+import ClaimRewards from "./features/rewards/ClaimRewards";
+import PnLChart from "./features/pnl/PnLChart";
+import TaxExport from "./features/taxes/TaxExport";
+import ReferralDashboard from "./features/referrals/ReferralDashboard";
+import VestingDashboard from "./pages/vesting/VestingDashboard";
+import TransparencyDashboard from "./pages/transparency/TransparencyDashboard";
+import RiskChronology from "./pages/transparency/RiskChronology";
+import StressTestDashboard from "./pages/StressTestDashboard";
+import YieldForGood from "./features/donations/YieldForGood";
+import YieldCalculator from "./components/calculator/YieldCalculator";
+import StrategyLeaderboard from "./pages/leaderboard/StrategyLeaderboard";
+import TreasurySimulation from "./pages/treasury/TreasurySimulation";
 import { useWallet } from "./context/useWallet";
 import { useState } from "react";
 import {
@@ -26,22 +38,77 @@ import {
   ShieldCheck,
   Trophy,
   CreditCard,
+  Gift,
+  DollarSign,
+  FileSpreadsheet,
+  Users,
+  Lock,
+  Eye,
+  Heart,
+  Settings,
+  Bell,
+  Calculator,
+  TrendingUp,
+  AlertTriangle,
+  Network,
+  Target,
+  Vault as VaultIcon,
+  Zap,
 } from "lucide-react";
 import "./index.css";
+import SettingsModal from "./features/settings/SettingsModal";
+import AlertsModal from "./features/alerts/AlertsModal";
+import StrategyComparison from "./pages/strategy/StrategyComparison";
+import { FragmentationDashboard } from "./features/fragmentation";
+import { ReallocationTimelinePlanner } from "./portfolio/ReallocationTimelinePlanner";
+
+// Vault IDs available for APY alerts (matches protocol names from yieldService)
+const VAULT_OPTIONS = ["Blend", "Soroswap", "DeFindex"];
+
+function GoalPlannerPage() {
+  return (
+    <ReallocationTimelinePlanner
+      planName="Goal Planner"
+      status="draft"
+      steps={[
+        {
+          stepId: "goal-planner-draft",
+          scheduledAt: new Date().toISOString(),
+          expectedFeeUsd: 0,
+          expectedRecoveryHours: 0,
+          allocations: { Blend: 40, Soroswap: 30, DeFindex: 30 },
+        },
+      ]}
+    />
+  );
+}
 
 // Layout Component
 const RootLayout = () => {
   const { isConnected, walletAddress } = useWallet();
   const [isOnRampOpen, setIsOnRampOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAlertsOpen, setIsAlertsOpen] = useState(false);
 
   return (
     <div className="min-h-screen flex flex-col">
       {/* On-Ramp Modal */}
       {isConnected && walletAddress && (
-        <OnRampModal 
-          isOpen={isOnRampOpen} 
-          onClose={() => setIsOnRampOpen(false)} 
-          walletAddress={walletAddress} 
+        <OnRampModal
+          isOpen={isOnRampOpen}
+          onClose={() => setIsOnRampOpen(false)}
+          walletAddress={walletAddress}
+        />
+      )}
+      {/* Settings Modal */}
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      {/* APY Alerts Modal */}
+      {isConnected && walletAddress && (
+        <AlertsModal
+          isOpen={isAlertsOpen}
+          onClose={() => setIsAlertsOpen(false)}
+          walletAddress={walletAddress}
+          vaultOptions={VAULT_OPTIONS}
         />
       )}
       {/* Navigation Bar */}
@@ -75,10 +142,22 @@ const RootLayout = () => {
             <BrainCircuit size={18} /> AI Advisor
           </Link>
           <Link
+            to="/stress"
+            className="hover:text-white transition-colors flex items-center gap-2"
+          >
+            <AlertTriangle size={18} /> Stress Test
+          </Link>
+          <Link
             to="/vault"
             className="hover:text-white transition-colors flex items-center gap-2"
           >
             <Landmark size={18} /> Vaults
+          </Link>
+          <Link
+            to="/strategy"
+            className="hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Zap size={18} /> Strategies
           </Link>
           {isConnected && (
             <Link
@@ -88,6 +167,28 @@ const RootLayout = () => {
               <PieChart size={18} /> Portfolio
             </Link>
           )}
+          {isConnected && (
+            <Link
+              to="/calculator"
+              className="hover:text-white transition-colors flex items-center gap-2"
+            >
+              <Calculator size={18} /> Calculator
+            </Link>
+          )}
+          {isConnected && (
+            <Link
+              to="/planner"
+              className="hover:text-white transition-colors flex items-center gap-2"
+            >
+              <Target size={18} /> Goal Planner
+            </Link>
+          )}
+          <Link
+            to="/fragmentation"
+            className="hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Network size={18} /> Fragmentation
+          </Link>
           {isConnected && (
             <Link
               to="/governance"
@@ -108,6 +209,72 @@ const RootLayout = () => {
           >
             <Trophy size={18} /> Leaderboard
           </Link>
+          <Link
+            to="/strategy-leaderboard"
+            className="hover:text-white transition-colors flex items-center gap-2"
+          >
+            <TrendingUp size={18} /> RAY Leaderboard
+          </Link>
+          {isConnected && (
+            <Link
+              to="/treasury"
+              className="hover:text-white transition-colors flex items-center gap-2"
+            >
+              <VaultIcon size={18} /> Treasury
+            </Link>
+          )}
+          <Link
+            to="/vesting"
+            className="hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Lock size={18} /> Vesting
+          </Link>
+          <Link
+            to="/transparency"
+            className="hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Eye size={18} /> Transparency
+          </Link>
+          {isConnected && (
+            <Link
+              to="/yield-for-good"
+              className="hover:text-white transition-colors flex items-center gap-2"
+            >
+              <Heart size={18} /> Yield for Good
+            </Link>
+          )}
+          {isConnected && (
+            <Link
+              to="/rewards"
+              className="hover:text-white transition-colors flex items-center gap-2"
+            >
+              <Gift size={18} /> Rewards
+            </Link>
+          )}
+          {isConnected && (
+            <Link
+              to="/pnl"
+              className="hover:text-white transition-colors flex items-center gap-2"
+            >
+              <DollarSign size={18} /> PnL
+            </Link>
+          )}
+          {isConnected && (
+            <Link
+              to="/taxes"
+              className="hover:text-white transition-colors flex items-center gap-2"
+            >
+              <FileSpreadsheet size={18} /> Tax Export
+            </Link>
+          )}
+          {isConnected && (
+            <Link
+              to="/referrals"
+              className="hover:text-white transition-colors flex items-center gap-2"
+            >
+              <Users size={18} /> Referrals
+            </Link>
+          )}
           {isConnected && (
             <button
               onClick={() => setIsOnRampOpen(true)}
@@ -120,6 +287,24 @@ const RootLayout = () => {
 
         <div className="flex items-center gap-4">
           <NotificationBell />
+          {isConnected && (
+            <button
+              type="button"
+              onClick={() => setIsAlertsOpen(true)}
+              aria-label="Open APY alerts"
+              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors"
+            >
+              <Bell size={18} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setIsSettingsOpen(true)}
+            aria-label="Open transaction settings"
+            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors"
+          >
+            <Settings size={18} />
+          </button>
           <ConnectWalletButton />
         </div>
       </nav>
@@ -151,12 +336,36 @@ const router = createBrowserRouter([
         element: <AIAdvisor />,
       },
       {
+        path: "/stress",
+        element: <StressTestDashboard />,
+      },
+      {
         path: "/vault",
         element: <Vault />,
       },
       {
+        path: "/vault/:slug",
+        element: <Vault />,
+      },
+      {
+        path: "/strategy",
+        element: <StrategyComparison />,
+      },
+      {
         path: "/portfolio",
         element: <PortfolioPage />,
+      },
+      {
+        path: "/calculator",
+        element: <YieldCalculator />,
+      },
+      {
+        path: "/planner",
+        element: <GoalPlannerPage />,
+      },
+      {
+        path: "/fragmentation",
+        element: <FragmentationDashboard />,
       },
       {
         path: "/governance",
@@ -169,6 +378,46 @@ const router = createBrowserRouter([
       {
         path: "/leaderboard",
         element: <Leaderboard />,
+      },
+      {
+        path: "/rewards",
+        element: <ClaimRewards />,
+      },
+      {
+        path: "/pnl",
+        element: <PnLChart />,
+      },
+      {
+        path: "/taxes",
+        element: <TaxExport />,
+      },
+      {
+        path: "/referrals",
+        element: <ReferralDashboard />,
+      },
+      {
+        path: "/vesting",
+        element: <VestingDashboard />,
+      },
+      {
+        path: "/transparency",
+        element: <TransparencyDashboard />,
+      },
+      {
+        path: "/transparency/incidents",
+        element: <RiskChronology />,
+      },
+      {
+        path: "/yield-for-good",
+        element: <YieldForGood />,
+      },
+      {
+        path: "/strategy-leaderboard",
+        element: <StrategyLeaderboard />,
+      },
+      {
+        path: "/treasury",
+        element: <TreasurySimulation />,
       },
     ],
   },

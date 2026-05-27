@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(clippy::too_many_arguments)]
 
 //! # Intent-Based Swap Architecture (CowSwap Style)
 //!
@@ -98,13 +99,17 @@ pub enum SwapError {
     InvalidExpiry = 12,
     SelfTrade = 13,
     PartialFillExceeded = 14,
+    InvalidFee = 15,
 }
+
+const MAX_PROTOCOL_FEE_BPS: u32 = 100;
 
 // ── Contract ────────────────────────────────────────────────────────────
 
 #[contract]
 pub struct IntentSwap;
 
+#[allow(clippy::too_many_arguments)]
 #[contractimpl]
 impl IntentSwap {
     // ── Initialization ──────────────────────────────────────────────
@@ -126,14 +131,13 @@ impl IntentSwap {
         if env.storage().instance().has(&DataKey::Initialized) {
             return Err(SwapError::AlreadyInitialized);
         }
+        if protocol_fee_bps > MAX_PROTOCOL_FEE_BPS {
+            return Err(SwapError::InvalidFee);
+        }
 
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage()
-            .instance()
-            .set(&DataKey::NextIntentId, &1u64);
-        env.storage()
-            .instance()
-            .set(&DataKey::MinStake, &min_stake);
+        env.storage().instance().set(&DataKey::NextIntentId, &1u64);
+        env.storage().instance().set(&DataKey::MinStake, &min_stake);
         env.storage()
             .instance()
             .set(&DataKey::ProtocolFeeBps, &protocol_fee_bps);
@@ -143,8 +147,10 @@ impl IntentSwap {
         env.storage().instance().set(&DataKey::SolverCount, &0u32);
         env.storage().instance().set(&DataKey::Initialized, &true);
 
-        env.events()
-            .publish((symbol_short!("init"),), (admin, min_stake, protocol_fee_bps));
+        env.events().publish(
+            (symbol_short!("init"),),
+            (admin, min_stake, protocol_fee_bps),
+        );
 
         Ok(())
     }
@@ -444,6 +450,9 @@ impl IntentSwap {
     /// Update protocol fee. Admin only.
     pub fn set_protocol_fee(env: Env, admin: Address, fee_bps: u32) -> Result<(), SwapError> {
         Self::require_admin(&env, &admin)?;
+        if fee_bps > MAX_PROTOCOL_FEE_BPS {
+            return Err(SwapError::InvalidFee);
+        }
         env.storage()
             .instance()
             .set(&DataKey::ProtocolFeeBps, &fee_bps);
@@ -455,9 +464,7 @@ impl IntentSwap {
     /// Update minimum solver stake. Admin only.
     pub fn set_min_stake(env: Env, admin: Address, min_stake: i128) -> Result<(), SwapError> {
         Self::require_admin(&env, &admin)?;
-        env.storage()
-            .instance()
-            .set(&DataKey::MinStake, &min_stake);
+        env.storage().instance().set(&DataKey::MinStake, &min_stake);
         Ok(())
     }
 
@@ -602,8 +609,7 @@ impl IntentSwap {
             .instance()
             .set(&DataKey::SolverCount, &(count.saturating_sub(1)));
 
-        env.events()
-            .publish((symbol_short!("unstake"),), (solver,));
+        env.events().publish((symbol_short!("unstake"),), (solver,));
 
         Ok(())
     }
@@ -672,7 +678,15 @@ mod tests {
 
         client.initialize(&admin, &1000, &50, &fee_recipient); // 0.5% fee, 1000 min stake
 
-        (env, client, admin, fee_recipient, token_a, token_b, contract_id)
+        (
+            env,
+            client,
+            admin,
+            fee_recipient,
+            token_a,
+            token_b,
+            contract_id,
+        )
     }
 
     fn mint_tokens(env: &Env, token_addr: &Address, to: &Address, amount: i128) {
@@ -685,6 +699,40 @@ mod tests {
         let (_, client, _, _, _, _, _) = setup_env();
         assert_eq!(client.solver_count(), 0);
         assert_eq!(client.get_protocol_fee(), 50);
+    }
+
+    #[test]
+    fn test_initialize_rejects_fee_above_max() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(IntentSwap, ());
+        let client = IntentSwapClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let fee_recipient = Address::generate(&env);
+
+        let result = client.try_initialize(&admin, &1000, &101, &fee_recipient);
+        assert_eq!(result, Err(Ok(SwapError::InvalidFee)));
+    }
+
+    #[test]
+    fn test_set_protocol_fee_bounds() {
+        let (_, client, admin, _, _, _, _) = setup_env();
+
+        // zero fee
+        client.set_protocol_fee(&admin, &0);
+        assert_eq!(client.get_protocol_fee(), 0);
+
+        // normal fee
+        client.set_protocol_fee(&admin, &50);
+        assert_eq!(client.get_protocol_fee(), 50);
+
+        // max fee
+        client.set_protocol_fee(&admin, &100);
+        assert_eq!(client.get_protocol_fee(), 100);
+
+        // invalid fee above max
+        let invalid = client.try_set_protocol_fee(&admin, &101);
+        assert_eq!(invalid, Err(Ok(SwapError::InvalidFee)));
     }
 
     #[test]
@@ -703,11 +751,7 @@ mod tests {
         env.ledger().set_timestamp(100);
 
         let intent_id = client.create_intent(
-            &user,
-            &token_a,
-            &token_b,
-            &10_000,
-            &9_500, // min 9500 buy tokens
+            &user, &token_a, &token_b, &10_000, &9_500, // min 9500 buy tokens
             &200,   // expires at ledger 200
             &false,
         );
@@ -727,7 +771,8 @@ mod tests {
         mint_tokens(&env, &token_a, &user, 10_000);
 
         env.ledger().set_timestamp(100);
-        let intent_id = client.create_intent(&user, &token_a, &token_b, &10_000, &9_500, &200, &false);
+        let intent_id =
+            client.create_intent(&user, &token_a, &token_b, &10_000, &9_500, &200, &false);
 
         client.cancel_intent(&user, &intent_id);
 
@@ -741,7 +786,7 @@ mod tests {
 
     #[test]
     fn test_solver_register_and_fill() {
-        let (env, client, admin, _, token_a, token_b, _) = setup_env();
+        let (env, client, _admin, _, token_a, token_b, _) = setup_env();
         let user = Address::generate(&env);
         let solver_addr = Address::generate(&env);
 
@@ -756,7 +801,8 @@ mod tests {
         assert_eq!(client.solver_count(), 1);
 
         // Create intent
-        let intent_id = client.create_intent(&user, &token_a, &token_b, &10_000, &9_500, &200, &false);
+        let intent_id =
+            client.create_intent(&user, &token_a, &token_b, &10_000, &9_500, &200, &false);
 
         // Fill intent — solver provides 10_000 buy tokens
         client.fill_intent(&solver_addr, &intent_id, &10_000, &10_000);
@@ -785,7 +831,8 @@ mod tests {
         client.register_solver(&solver_addr, &token_a, &1_000);
 
         // Create intent with partial fill enabled
-        let intent_id = client.create_intent(&user, &token_a, &token_b, &10_000, &9_500, &200, &true);
+        let intent_id =
+            client.create_intent(&user, &token_a, &token_b, &10_000, &9_500, &200, &true);
 
         // Partial fill — only 5000 of 10000
         client.fill_intent(&solver_addr, &intent_id, &5_000, &5_000);
@@ -809,7 +856,8 @@ mod tests {
         env.ledger().set_timestamp(100);
 
         client.register_solver(&solver_addr, &token_a, &1_000);
-        let intent_id = client.create_intent(&user, &token_a, &token_b, &10_000, &9_500, &200, &false);
+        let intent_id =
+            client.create_intent(&user, &token_a, &token_b, &10_000, &9_500, &200, &false);
 
         // Try to fill with less than min_buy_amount
         client.fill_intent(&solver_addr, &intent_id, &5_000, &10_000);
@@ -823,7 +871,8 @@ mod tests {
         mint_tokens(&env, &token_a, &user, 10_000);
 
         env.ledger().set_timestamp(100);
-        let intent_id = client.create_intent(&user, &token_a, &token_b, &10_000, &9_500, &200, &false);
+        let intent_id =
+            client.create_intent(&user, &token_a, &token_b, &10_000, &9_500, &200, &false);
 
         // Advance time past expiry
         env.ledger().set_timestamp(201);
@@ -848,7 +897,8 @@ mod tests {
         mint_tokens(&env, &token_b, &rando, 20_000);
 
         env.ledger().set_timestamp(100);
-        let intent_id = client.create_intent(&user, &token_a, &token_b, &10_000, &9_500, &200, &false);
+        let intent_id =
+            client.create_intent(&user, &token_a, &token_b, &10_000, &9_500, &200, &false);
 
         // Non-registered solver tries to fill
         client.fill_intent(&rando, &intent_id, &10_000, &10_000);

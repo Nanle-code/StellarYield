@@ -1,7 +1,13 @@
-export function getApiBaseUrl(): string {
-  const url = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
-  if (url) {
-    return url;
+const LOCAL_API_BASE_URL = "http://localhost:3001";
+
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+export function getApiBaseUrl(env: ImportMetaEnv = import.meta.env): string {
+  const configured = env.VITE_API_BASE_URL || env.VITE_API_URL;
+  if (configured?.trim()) {
+    return trimTrailingSlash(configured.trim());
   }
 
   const isLocalhost = typeof window !== 'undefined' 
@@ -12,5 +18,10 @@ export function getApiBaseUrl(): string {
     throw new Error("API_UNAVAILABLE: Backend URL not configured for preview environment. Please set VITE_API_BASE_URL.");
   }
 
-  return "http://localhost:3001";
+  return LOCAL_API_BASE_URL;
+}
+
+export function apiUrl(path: string, env?: ImportMetaEnv): string {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${getApiBaseUrl(env)}${normalizedPath}`;
 }
