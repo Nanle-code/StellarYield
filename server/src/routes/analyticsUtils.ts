@@ -1,4 +1,8 @@
 // Analytics Helper Functions
+import type { AttributionReport } from '../services/portfolioAttributionService';
+import type { CompatibilityReport, CompatibilityIssue } from '../services/protocolCompatibilityService';
+import type { StrategyHealthScore } from '../services/strategyHealthService';
+import type { DataSourceReliability } from '../services/yieldReliabilityService';
 
 export function validateAttributionRequest(walletAddress: string, startTime: string, endTime: string): { valid: boolean; error?: string } {
   // Basic validation
@@ -18,55 +22,48 @@ export function validateAttributionRequest(walletAddress: string, startTime: str
   return { valid: true };
 }
 
-interface AttributionReport {
-  breakdown?: Array<{ contribution: number }>;
-  [key: string]: unknown;
+// Extended interfaces for utility functions
+interface ExtendedAttributionReport extends AttributionReport {
+  formattedDate?: string;
+  totalAttribution?: number;
 }
 
-interface CompatibilityReport {
-  issues?: Array<{ severity: string }>;
-  [key: string]: unknown;
+interface ExtendedCompatibilityReport extends CompatibilityReport {
+  formattedDate?: string;
+  criticalIssues: CompatibilityIssue[];
 }
 
-interface HealthScore {
-  overallScore: number;
-  strategyId?: string;
-  [key: string]: unknown;
+interface ExtendedHealthScore extends StrategyHealthScore {
+  status: "healthy" | "degraded" | "critical" | "disabled";
+  formattedDate?: string;
 }
 
-interface ReliabilityScore {
-  overallScore: number;
-  [key: string]: unknown;
+interface ExtendedReliabilityScore extends DataSourceReliability {
+  status: "low" | "medium" | "high" | "unreliable";
+  formattedDate?: string;
 }
 
-interface Provider {
-  reliabilityScore?: number;
-  overallScore?: number;
-  [key: string]: unknown;
+interface WeightedProvider extends DataSourceReliability {
+  weight: number;
 }
 
-interface ProtocolReport {
-  protocols?: Array<{ protocolName: string; status: string; criticalIssues?: number }>;
-  [key: string]: unknown;
-}
-
-export function formatAttributionReport(report: AttributionReport): AttributionReport {
+export function formatAttributionReport(report: AttributionReport): ExtendedAttributionReport {
   return {
     ...report,
     formattedDate: new Date().toISOString(),
-    totalAttribution: report.breakdown?.reduce((sum: number, item: { contribution: number }) => sum + item.contribution, 0) || 0,
+    totalAttribution: report.attributionBreakdown?.reduce((sum, item) => sum + item.contribution, 0) || 0,
   };
 }
 
-export function formatCompatibilityReport(report: CompatibilityReport): CompatibilityReport {
+export function formatCompatibilityReport(report: CompatibilityReport): ExtendedCompatibilityReport {
   return {
     ...report,
     formattedDate: new Date().toISOString(),
-    criticalIssues: report.issues?.filter((issue: { severity: string }) => issue.severity === 'critical') || [],
+    criticalIssues: report.criticalIssues || [],
   };
 }
 
-export function formatHealthScore(score: HealthScore): HealthScore {
+export function formatHealthScore(score: StrategyHealthScore): ExtendedHealthScore {
   return {
     ...score,
     status: score.overallScore >= 80 ? 'healthy' : score.overallScore >= 60 ? 'degraded' : 'critical',
@@ -74,7 +71,7 @@ export function formatHealthScore(score: HealthScore): HealthScore {
   };
 }
 
-export function getCriticalHealthAlerts(scores: HealthScore[]): Array<{
+export function getCriticalHealthAlerts(scores: StrategyHealthScore[]): Array<{
   strategyId: string;
   severity: string;
   message: string;
@@ -90,24 +87,24 @@ export function getCriticalHealthAlerts(scores: HealthScore[]): Array<{
     }));
 }
 
-export function formatReliabilityScore(reliability: ReliabilityScore): ReliabilityScore {
+export function formatReliabilityScore(reliability: DataSourceReliability): ExtendedReliabilityScore {
   return {
     ...reliability,
-    status: reliability.overallScore >= 80 ? 'reliable' : reliability.overallScore >= 60 ? 'moderate' : 'unreliable',
+    status: reliability.reliabilityScore >= 80 ? 'high' : reliability.reliabilityScore >= 60 ? 'medium' : 'unreliable',
     formattedDate: new Date().toISOString(),
   };
 }
 
-export function getWeightedProviderSelection(providers: Provider[]): Array<Provider & { weight: number }> {
+export function getWeightedProviderSelection(providers: DataSourceReliability[]): WeightedProvider[] {
   return providers
     .map(provider => ({
       ...provider,
-      weight: (provider.overallScore || provider.reliabilityScore || 0) / 100, // Simple weighting based on score
+      weight: provider.reliabilityScore / 100, // Simple weighting based on score
     }))
     .sort((a, b) => b.weight - a.weight);
 }
 
-export function isProtocolSafeForExecution(protocolName: string, report: ProtocolReport): boolean {
-  const protocolStatus = report.protocols?.find((p: { protocolName: string; status: string; criticalIssues?: number }) => p.protocolName === protocolName);
-  return protocolStatus?.status === 'compatible' && (protocolStatus?.criticalIssues ?? 0) === 0;
+export function isProtocolSafeForExecution(protocolName: string, report: CompatibilityReport): boolean {
+  const protocolStatus = report.protocols?.find(p => p.protocolName === protocolName);
+  return protocolStatus?.status === 'compatible' && (protocolStatus?.issues?.length ?? 0) === 0;
 }
