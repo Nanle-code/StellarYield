@@ -1,6 +1,40 @@
-# Pre-commit Formatting and Verification Guide
+# Contributor Guide
 
-This guide lists the formatting, lint, build, and test commands contributors should run before opening a pull request.
+## Issue Labels
+
+### Difficulty labels
+
+| Label | When to apply |
+|-------|--------------|
+| `difficulty: easy` | Self-contained change, clear acceptance criteria, no cross-cutting concerns. Good for first-time contributors. |
+| `difficulty: medium` | Requires understanding of at least one subsystem. May touch multiple files. |
+| `difficulty: hard` | Complex design decision, significant refactor, or cross-cutting change across multiple areas. |
+
+### Area labels
+
+Apply one or more `area:` labels to describe which part of the repo the issue touches:
+
+- `area: frontend` — `client/`
+- `area: backend` — `server/`
+- `area: contracts` — `contracts/`
+- `area: docs` — documentation only
+- `area: ci` — GitHub Actions / CI config
+
+### How maintainers should apply labels
+
+1. Every new issue should get exactly one `difficulty:` label and at least one `area:` label.
+2. Add `good first issue` only when the issue also has `difficulty: easy` **and** a clear, step-by-step acceptance criteria.
+3. Labels are defined in `.github/labels.yml`. To sync labels to the repo run:
+   ```bash
+   gh label import .github/labels.yml
+   ```
+4. Never remove existing labels not listed in `labels.yml` — only add.
+
+---
+
+## Pre-commit Formatting and Verification
+
+The following formatting, lint, build, and test commands should be run before opening a pull request.
 
 ## Rust Contracts
 
