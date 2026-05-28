@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Activity, ShieldCheck, ShieldAlert, ShieldX, Info } from 'lucide-react';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 interface LiquidityHealth {
   strategyId: string;
@@ -15,6 +16,7 @@ interface LiquidityHealth {
 }
 
 export const LiquidityHealthDashboard: React.FC = () => {
+  const reducedMotion = useReducedMotion();
   const [scores, setScores] = useState<LiquidityHealth[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -60,12 +62,16 @@ export const LiquidityHealthDashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-48">
-        <div className="animate-pulse flex space-x-2">
-          <div className="h-2 w-2 bg-slate-400 rounded-full"></div>
-          <div className="h-2 w-2 bg-slate-400 rounded-full"></div>
-          <div className="h-2 w-2 bg-slate-400 rounded-full"></div>
-        </div>
+      <div className="flex items-center justify-center h-48" role="status">
+        {reducedMotion ? (
+          <span className="text-sm text-slate-400 font-medium">Loading liquidity health...</span>
+        ) : (
+          <div className="animate-pulse flex space-x-2">
+            <div className="h-2 w-2 bg-slate-400 rounded-full"></div>
+            <div className="h-2 w-2 bg-slate-400 rounded-full"></div>
+            <div className="h-2 w-2 bg-slate-400 rounded-full"></div>
+          </div>
+        )}
       </div>
     );
   }
@@ -125,8 +131,11 @@ const ComponentBar: React.FC<{ label: string; value: number; color: string }> = 
     </div>
     <div className="h-1 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
       <div 
-        className={`h-full ${color} transition-all duration-500`} 
-        style={{ width: `${value}%` }}
+        className={`h-full ${color} transition-all`} 
+        style={{ 
+          width: `${value}%`,
+          transitionDuration: reducedMotion ? '0s' : '500ms'
+        }}
       />
     </div>
   </div>

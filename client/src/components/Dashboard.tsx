@@ -1,5 +1,6 @@
 import React, { useEffect, useState, Suspense } from "react";
 import { Activity, ArrowUpRight, ShieldCheck, TrendingUp } from "lucide-react";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import ApyHistoryChart from "./charts/ApyHistoryChart";
 import { YieldFlowCanvas } from "./visualizations";
 import MempoolVisualizer from "./mempool_graph/MempoolVisualizer";
@@ -22,6 +23,7 @@ interface YieldData {
 }
 
 export default function Dashboard() {
+  const reducedMotion = useReducedMotion();
   const [yields, setYields] = useState<YieldData[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
@@ -44,7 +46,7 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className={`space-y-8 ${reducedMotion ? "" : "animate-in fade-in slide-in-from-bottom-4 duration-700"}`}>
       <header className="mb-10">
         <h2 className="mb-2 text-4xl font-extrabold tracking-tight">
           Welcome Back
@@ -109,7 +111,9 @@ export default function Dashboard() {
 
       <Suspense
         fallback={
-          <div className="glass-card animate-pulse" style={{ height: 400 }} />
+          <div className={`glass-card ${reducedMotion ? "" : "animate-pulse"}`} style={{ height: 400 }}>
+            {reducedMotion && <span className="p-6 block text-sm text-gray-500">Loading flow canvas...</span>}
+          </div>
         }
       >
         <YieldFlowCanvas scene="dashboard" />
@@ -150,7 +154,7 @@ export default function Dashboard() {
                     className="px-6 py-12 text-center text-gray-500"
                   >
                     <div className="flex items-center justify-center gap-3">
-                      <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#6C5DD3] border-t-transparent" />
+                      {!reducedMotion && <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#6C5DD3] border-t-transparent" />}
                       Fetching on-chain data...
                     </div>
                   </td>
@@ -201,7 +205,7 @@ export default function Dashboard() {
                       </td>
                     </tr>
                     {expandedRows[i] && (
-                      <tr className="animate-in fade-in slide-in-from-top-2 duration-300">
+                      <tr className={reducedMotion ? "" : "animate-in fade-in slide-in-from-top-2 duration-300"}>
                         <td colSpan={6} className="px-6 pb-6 pt-0 border-none">
                           <div className="max-w-md ml-auto mr-0">
                             <ApyAttribution attribution={y.attribution} totalApy={y.apy} />
