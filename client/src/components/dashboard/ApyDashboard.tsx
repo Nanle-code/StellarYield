@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
+import { FeeAssumptionsModal } from "../FeeAssumptionsModal";
 import {
   BarChart3,
   ArrowUpRight,
@@ -166,8 +168,9 @@ function getErrorMessage(error: unknown): string {
 // ── Skeleton Components ─────────────────────────────────────────────────
 
 function SkeletonCard() {
+  const reducedMotion = useReducedMotion();
   return (
-    <div className="glass-card p-6 animate-pulse">
+    <div className={`glass-card p-6 ${reducedMotion ? "" : "animate-pulse"}`}>
       <div className="flex items-center gap-3 mb-5">
         <div className="w-10 h-10 rounded-xl bg-white/5"></div>
         <div className="space-y-2 flex-1">
@@ -186,8 +189,9 @@ function SkeletonCard() {
 }
 
 function SkeletonTableRow() {
+  const reducedMotion = useReducedMotion();
   return (
-    <tr className="animate-pulse">
+    <tr className={reducedMotion ? "" : "animate-pulse"}>
       <td className="px-6 py-5">
         <div className="h-4 bg-white/5 rounded-lg w-20"></div>
       </td>
@@ -214,8 +218,9 @@ function SkeletonTableRow() {
 }
 
 function SkeletonSummary() {
+  const reducedMotion = useReducedMotion();
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-pulse">
+    <div className={`grid grid-cols-1 md:grid-cols-4 gap-4 ${reducedMotion ? "" : "animate-pulse"}`}>
       {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="glass-card p-5">
           <div className="h-3 bg-white/5 rounded-lg w-24 mb-3"></div>
@@ -229,6 +234,8 @@ function SkeletonSummary() {
 // ── Main Component ──────────────────────────────────────────────────────
 
 export default function ApyDashboard() {
+  const reducedMotion = useReducedMotion();
+  const [isFeeModalOpen, setIsFeeModalOpen] = useState(false);
   const [apyData, setApyData] = useState<ApyEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -355,7 +362,7 @@ export default function ApyDashboard() {
 
   if (error && !apyData.length) {
     return (
-      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className={`space-y-8 ${reducedMotion ? "" : "animate-in fade-in slide-in-from-bottom-4 duration-700"}`}>
         <header className="mb-6">
           <h2 className="text-4xl font-extrabold tracking-tight mb-2">
             APY Comparison
@@ -386,7 +393,7 @@ export default function ApyDashboard() {
   // ── Render ────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className={`space-y-8 ${reducedMotion ? "" : "animate-in fade-in slide-in-from-bottom-4 duration-700"}`}>
       {/* Header */}
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
@@ -407,7 +414,7 @@ export default function ApyDashboard() {
           disabled={refreshing}
           className="btn-secondary flex items-center gap-2 text-sm self-start md:self-auto disabled:opacity-50"
         >
-          <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+          <RefreshCw size={14} className={refreshing && !reducedMotion ? "animate-spin" : ""} />
           {refreshing ? "Refreshing..." : "Refresh Rates"}
         </button>
       </header>
@@ -427,7 +434,7 @@ export default function ApyDashboard() {
             onClick={handleRefresh}
             className="btn-secondary inline-flex items-center gap-2 text-sm self-start sm:self-auto"
           >
-            <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+            <RefreshCw size={14} className={refreshing && !reducedMotion ? "animate-spin" : ""} />
             Retry
           </button>
         </div>
@@ -481,7 +488,16 @@ export default function ApyDashboard() {
       {!loading && feeAttributionRows.length > 0 && (
         <section className="glass-panel p-5">
           <div className="mb-3">
-            <h3 className="text-lg font-semibold">Cross-Vault Fee Attribution</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold">Cross-Vault Fee Attribution</h3>
+              <button 
+                onClick={() => setIsFeeModalOpen(true)}
+                className="text-gray-400 hover:text-white transition-colors cursor-pointer"
+                aria-label="View fee assumptions"
+              >
+                <Info size={16} />
+              </button>
+            </div>
             <p className="text-xs text-gray-400">
               Comparative fee drag by management, protocol, slippage, network, reward offsets, and unknown components.
             </p>
@@ -610,7 +626,7 @@ export default function ApyDashboard() {
                   <div
                     key={`${entry.protocol}-${entry.asset}`}
                     className="glass-card p-6 flex flex-col justify-between group"
-                    style={{ animationDelay: `${i * 60}ms` }}
+                    style={reducedMotion ? {} : { animationDelay: `${i * 60}ms` }}
                   >
                     {/* Protocol + Asset */}
                     <div>
@@ -679,9 +695,15 @@ export default function ApyDashboard() {
                           % APY
                         </span>
                       </div>
-                      <p className="text-xs text-gray-500">
-                        Gross {(entry.totalApy ?? entry.apy).toFixed(2)}% | Drag{" "}
-                        {(entry.feeDragApy ?? 0).toFixed(2)}%
+                      <p className="text-xs text-gray-500 flex items-center gap-1.5">
+                        <span>Gross {(entry.totalApy ?? entry.apy).toFixed(2)}% | Drag {(entry.feeDragApy ?? 0).toFixed(2)}%</span>
+                        <button
+                          onClick={() => setIsFeeModalOpen(true)}
+                          className="text-gray-500 hover:text-white transition-colors cursor-pointer"
+                          aria-label="View fee assumptions"
+                        >
+                          <Info size={12} />
+                        </button>
                       </p>
 
                       {/* 24h Change + TVL */}
@@ -760,7 +782,7 @@ export default function ApyDashboard() {
             onClick={handleRefresh}
             className="btn-secondary inline-flex items-center gap-2 mt-6"
           >
-            <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+            <RefreshCw size={14} className={refreshing && !reducedMotion ? "animate-spin" : ""} />
             Refresh
           </button>
         </div>
@@ -828,7 +850,7 @@ export default function ApyDashboard() {
                         <tr
                           key={`${entry.protocol}-${entry.asset}`}
                           className="group hover:bg-[rgba(255,255,255,0.03)] transition-colors"
-                          style={{ animationDelay: `${i * 40}ms` }}
+                          style={reducedMotion ? {} : { animationDelay: `${i * 40}ms` }}
                         >
                           <td className="px-6 py-5">
                             <div className="flex items-center gap-3">
@@ -969,6 +991,10 @@ export default function ApyDashboard() {
             rationale: [],
           },
         ]}
+      />
+      <FeeAssumptionsModal
+        isOpen={isFeeModalOpen}
+        onClose={() => setIsFeeModalOpen(false)}
       />
     </div>
   );

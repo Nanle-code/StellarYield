@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from "recharts";
 import { Activity, AlertTriangle, CheckCircle, XCircle, TrendingUp, TrendingDown, Minus, RefreshCw, Settings } from "lucide-react";
 import StatusBadge from '../../components/StatusBadge';
+import { FreshnessBanner } from "../../components/dashboard/FreshnessBanner";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -266,6 +267,13 @@ export default function StrategyHealthPanel({ strategyIds = ['strategy_1', 'stra
                 </span>
               </div>
             </div>
+          </div>
+
+          <div className="mb-6">
+            <FreshnessBanner 
+              lastUpdated={selectedStrategy.lastUpdated}
+              confidence={selectedStrategy.metrics.dataFreshness}
+            />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

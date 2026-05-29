@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Activity, RefreshCw, AlertTriangle } from "lucide-react";
 import StatusBadge from "../../components/StatusBadge";
+import { FreshnessBanner } from "../../components/dashboard/FreshnessBanner";
 import { apiUrl } from "../../lib/api";
 import {
   getSourceStatusDisplay,
@@ -78,6 +79,8 @@ export default function SourceHealthPanel() {
 
       {registry && (
         <>
+          <FreshnessBanner lastUpdated={registry.generatedAt} />
+
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="text-gray-400">
               {registry.totalSources} sources ·
