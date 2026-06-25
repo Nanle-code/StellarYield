@@ -16,7 +16,7 @@ const SCRIPT = path.resolve(__dirname, "../scripts/generate-manifest.js");
 
 // A valid 56-char Soroban contract ID (starts with C, base32)
 const VALID_ID_1 = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
-const VALID_ID_2 = "CBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBSC4";
+const VALID_ID_2 = "CBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBSC4";
 
 function makeTmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "manifest-test-"));
