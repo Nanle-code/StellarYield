@@ -124,6 +124,58 @@ node contracts/scripts/validate-registry.js
 The manifest file (`deployment-manifest.json`) should be committed to the repository
 or stored as a CI artifact so that every deployment is fully auditable.
 
+## Manifest Verification
+
+After generating a manifest, verify it agrees with `registry.json` to detect drift:
+
+```bash
+node contracts/scripts/verify-manifest.js \
+  --manifest contracts/scripts/deployment-manifest.json \
+  --registry contracts/registry.json \
+  --network testnet
+```
+
+Options:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--manifest` | *(required)* | Path to deployment-manifest.json |
+| `--registry` | `contracts/registry.json` | Path to registry.json |
+| `--network` | *(from manifest)* | Network to verify: `testnet`, `mainnet`, or `local` |
+
+The verifier reports three types of drift:
+
+| Type | Meaning |
+|------|---------|
+| `MISSING` | Registry has a non-empty address but no matching manifest entry |
+| `MISMATCH` | Both have an entry for the same contract but the addresses differ |
+| `STALE` | Manifest has an entry that the registry doesn't know about (or has empty) |
+
+Exits 0 if clean; exits 1 on any drift (CI-friendly). If the manifest file does not
+exist the verifier exits 0 — no deployment has run on this branch yet, which is fine.
+
+**Full post-deployment workflow:**
+
+```bash
+# 1. Deploy contracts
+bash contracts/scripts/deploy.sh
+
+# 2. Generate the manifest
+node contracts/scripts/generate-manifest.js \
+  --input contracts/scripts/deployed.json \
+  --network testnet
+
+# 3. Validate the registry format
+node contracts/scripts/validate-registry.js
+
+# 4. Verify manifest agrees with the registry
+node contracts/scripts/verify-manifest.js \
+  --manifest contracts/scripts/deployment-manifest.json \
+  --network testnet
+```
+
+CI runs step 4 automatically on every PR where a manifest has been committed.
+
 ## Secrets
 
 `.env.deploy` is listed in `.gitignore`. Never commit private keys or secret accounts.
