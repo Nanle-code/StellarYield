@@ -855,6 +855,109 @@ mod tests {
         client.settle_batch(&batch, &signatures);
     }
 
+    /// Verifies that submitting a batch whose trade_id was already settled
+    /// fails deterministically with TradeAlreadySettled (error #5).
+    #[test]
+    #[should_panic(expected = "Error(Contract, #5)")]
+    fn test_duplicate_trade_id_rejected() {
+        let env = Env::default();
+        env.mock_all_auths_allowing_non_root_auth();
+
+        let contract_id = env.register(SettlementContract, ());
+        let client = SettlementContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let engine = Address::generate(&env);
+        let fee_recipient = Address::generate(&env);
+        // fee_bps = 0 so collect_fees is a no-op and transfers succeed cleanly
+        client.initialize(&admin, &Some(engine), &fee_recipient, &0);
+
+        let maker = Address::generate(&env);
+        let taker = Address::generate(&env);
+        let token_admin = Address::generate(&env);
+        let token0 = env.register_stellar_asset_contract_v2(token_admin.clone()).address();
+        let token1 = env.register_stellar_asset_contract_v2(token_admin.clone()).address();
+
+        token::StellarAssetClient::new(&env, &token0).mint(&maker, &2000);
+        token::StellarAssetClient::new(&env, &token1).mint(&taker, &2000);
+
+        let data = SettlementData {
+            trade_id: String::from_str(&env, "dup_trade_1"),
+            maker: maker.clone(),
+            taker: taker.clone(),
+            token0: token0.clone(),
+            token1: token1.clone(),
+            amount0: 100,
+            amount1: 100,
+            price: 100,
+            timestamp: 100,
+        };
+
+        let sig = Bytes::from_slice(&env, &[1u8; 64]);
+        let signatures = soroban_sdk::vec![&env, (sig.clone(), sig.clone(), sig.clone())];
+
+        let batch1 = SettlementBatch {
+            batch_id: String::from_str(&env, "batch_first"),
+            settlements: soroban_sdk::vec![&env, data.clone()],
+            total_amount0: 100,
+            total_amount1: 100,
+            timestamp: 100,
+        };
+
+        // First submission must succeed and mark trade as settled
+        client.settle_batch(&batch1, &signatures);
+
+        let batch2 = SettlementBatch {
+            batch_id: String::from_str(&env, "batch_replay"),
+            settlements: soroban_sdk::vec![&env, data],
+            total_amount0: 100,
+            total_amount1: 100,
+            timestamp: 101,
+        };
+
+        // Replay of the same trade_id must panic with TradeAlreadySettled (#5)
+        client.settle_batch(&batch2, &signatures);
+    }
+
+    /// Verifies that a batch with empty signatures fails with InvalidSignature (error #4).
+    #[test]
+    #[should_panic(expected = "Error(Contract, #4)")]
+    fn test_empty_signature_rejected() {
+        let env = Env::default();
+        let (client, _, _) = setup_contract(&env);
+
+        let maker = Address::generate(&env);
+        let taker = Address::generate(&env);
+        let token0 = Address::generate(&env);
+        let token1 = Address::generate(&env);
+
+        let data = SettlementData {
+            trade_id: String::from_str(&env, "trade_sig_test"),
+            maker: maker.clone(),
+            taker: taker.clone(),
+            token0: token0.clone(),
+            token1: token1.clone(),
+            amount0: 100,
+            amount1: 200,
+            price: 200,
+            timestamp: 100,
+        };
+
+        let batch = SettlementBatch {
+            batch_id: String::from_str(&env, "batch_sig"),
+            settlements: soroban_sdk::vec![&env, data],
+            total_amount0: 100,
+            total_amount1: 200,
+            timestamp: 100,
+        };
+
+        // Zero-length signatures must trigger InvalidSignature (#4)
+        let empty = Bytes::new(&env);
+        let signatures = soroban_sdk::vec![&env, (empty.clone(), empty.clone(), empty.clone())];
+
+        client.settle_batch(&batch, &signatures);
+    }
+
     #[test]
     #[should_panic(expected = "Error(Contract, #10)")]
     fn test_settle_batch_negative_amount_panics() {

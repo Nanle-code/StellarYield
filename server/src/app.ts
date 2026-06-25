@@ -41,6 +41,7 @@ import activityTimelineRouter from "./routes/activityTimeline";
 import presetsRouter from "./routes/presets";
 import analyticsRouter from "./routes/analytics";
 import offrampRouter from "./routes/offramp";
+import contactsRouter from "./routes/contacts";
 
 import { createAuthChallenge, verifyAuthChallenge } from "./utils/stellarAuth";
 import {
@@ -129,6 +130,7 @@ export function createApp() {
   app.use("/api/presets", presetsRouter);
   app.use("/api/analytics", analyticsRouter);
   app.use("/api/offramp", offrampRouter);
+  app.use("/api/contacts", contactsRouter);
 
 
   // Legacy JSON metrics (internal tooling)
