@@ -34,6 +34,10 @@ describe("extractErrorCode", () => {
         expect(extractErrorCode(JSON.stringify({ code: 9 }))).toBe(9);
     });
 
+    it("parses nested JSON structured payload with contract_code field", () => {
+        expect(extractErrorCode(JSON.stringify({ result: { error: { contract_code: 10 } } }))).toBe(10);
+    });
+
     it("returns undefined for unknown formats", () => {
         expect(extractErrorCode("some random error")).toBeUndefined();
     });

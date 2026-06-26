@@ -172,14 +172,20 @@ export function extractErrorCode(raw: string): number | undefined {
     // JSON structured payload
     try {
         const parsed = JSON.parse(raw) as unknown;
-        if (
-            parsed !== null &&
-            typeof parsed === "object" &&
-            "code" in parsed &&
-            typeof (parsed as Record<string, unknown>).code === "number"
-        ) {
-            return (parsed as Record<string, number>).code;
-        }
+        const findCode = (obj: any): number | undefined => {
+            if (obj === null || typeof obj !== "object") return undefined;
+            if ("code" in obj && typeof obj.code === "number") return obj.code;
+            if ("contract_code" in obj && typeof obj.contract_code === "number") return obj.contract_code;
+            for (const key of Object.keys(obj)) {
+                if (typeof obj[key] === "object") {
+                    const res = findCode(obj[key]);
+                    if (res !== undefined) return res;
+                }
+            }
+            return undefined;
+        };
+        const deepCode = findCode(parsed);
+        if (deepCode !== undefined) return deepCode;
     } catch {
         // not JSON — continue to next strategy
     }
