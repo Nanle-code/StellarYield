@@ -7,35 +7,58 @@ import { useState, useCallback, useMemo } from "react";
 import { Zap, AlertCircle, CheckCircle2 } from "lucide-react";
 import TxStatusTimeline from "../../components/transaction/TxStatusTimeline";
 import type { TxPhase } from "../../services/transactionPhase";
-import type { VaultAllocation } from "./types";
+import type { VaultAllocation, PortfolioPreset } from "./types";
 import {
   calculateBlendedApy,
   isValidAllocation,
   distributeAmount,
   normalizeWeights,
+  applyPreset,
 } from "./portfolioUtils";
+import RebalancePreview from "./RebalancePreviewPanel";
+import { useWallet } from "../../context/useWallet";
+import { deposit } from "../../services/soroban";
 
 export interface PortfolioBuilderProps {
   walletAddress: string | null;
   availableVaults: Array<{ contractId: string; name: string; apy: number }>;
 }
 
+function buildInitialAllocations(
+  availableVaults: PortfolioBuilderProps["availableVaults"],
+): VaultAllocation[] {
+  return availableVaults.slice(0, 3).map((v) => ({
+    vaultContractId: v.contractId,
+    vaultName: v.name,
+    apy: v.apy,
+    weight: 100 / Math.min(3, availableVaults.length),
+    amount: 0n,
+  }));
+}
+
 export default function PortfolioBuilder({
   walletAddress,
   availableVaults,
 }: PortfolioBuilderProps) {
+  const { signTransaction } = useWallet();
   const [totalAmount, setTotalAmount] = useState("");
   const [allocations, setAllocations] = useState<VaultAllocation[]>(() =>
-    availableVaults.slice(0, 3).map((v) => ({
-      vaultContractId: v.contractId,
-      vaultName: v.name,
-      apy: v.apy,
-      weight: 100 / Math.min(3, availableVaults.length),
-      amount: 0n,
-    })),
+    buildInitialAllocations(availableVaults),
+  );
+  // Baseline ("current") position the rebalance sandbox previews against.
+  const [baselineAllocations] = useState<VaultAllocation[]>(() =>
+    buildInitialAllocations(availableVaults),
   );
   const [txPhase, setTxPhase] = useState<TxPhase>("idle");
   const [error, setError] = useState("");
+  const [executeTx, setExecuteTx] = useState(false);
+
+  const handlePresetApply = useCallback(
+    (preset: PortfolioPreset) => {
+      setAllocations(applyPreset(availableVaults, preset));
+    },
+    [availableVaults],
+  );
 
   const isValid = useMemo(() => isValidAllocation(allocations), [allocations]);
 
@@ -77,26 +100,59 @@ export default function PortfolioBuilder({
     setTxPhase("building");
 
     try {
-      // In production: build batched XDR transaction
-      // For now: simulate the flow
-      setTxPhase("simulating");
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (executeTx) {
+        const activeAllocations = distributedAllocations.filter(
+          (a) => a.amount > 0n,
+        );
+        if (activeAllocations.length === 0) {
+          throw new Error("No allocations to execute");
+        }
+        for (const alloc of activeAllocations) {
+          // Deposit into each vault with 1% slippage limit
+          const minShares = (alloc.amount * 99n) / 100n;
+          const res = await deposit(
+            walletAddress,
+            alloc.amount,
+            minShares,
+            (phase) => setTxPhase(phase),
+            true,
+            signTransaction,
+          );
+          if (!res.success) {
+            throw new Error(
+              res.error || `Failed to deposit into ${alloc.vaultName}`,
+            );
+          }
+        }
+        setTxPhase("success");
+      } else {
+        // Mock flow
+        setTxPhase("simulating");
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      setTxPhase("waiting_for_wallet");
-      await new Promise((resolve) => setTimeout(resolve, 500));
+        setTxPhase("waiting_for_wallet");
+        await new Promise((resolve) => setTimeout(resolve, 500));
 
-      setTxPhase("submitting");
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+        setTxPhase("submitting");
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      setTxPhase("polling");
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+        setTxPhase("polling");
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      setTxPhase("success");
+        setTxPhase("success");
+      }
     } catch (err) {
       setTxPhase("failure");
       setError(err instanceof Error ? err.message : "Deposit failed");
     }
-  }, [walletAddress, totalAmount, isValid]);
+  }, [
+    walletAddress,
+    totalAmount,
+    isValid,
+    executeTx,
+    distributedAllocations,
+    signTransaction,
+  ]);
 
   return (
     <div className="space-y-6">
@@ -115,6 +171,29 @@ export default function PortfolioBuilder({
             placeholder="Enter amount to allocate"
             className="w-full bg-black/50 border border-gray-600 rounded-lg px-3 py-2 text-white"
           />
+        </div>
+
+        {/* Presets */}
+        <div className="space-y-2">
+          <label className="block text-sm text-gray-400">Allocation Presets</label>
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                "conservative",
+                "balanced",
+                "aggressive",
+                "stablecoin-heavy",
+              ] as PortfolioPreset[]
+            ).map((p) => (
+              <button
+                key={p}
+                onClick={() => handlePresetApply(p)}
+                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-xs font-medium rounded-md capitalize transition-colors border border-gray-700"
+              >
+                {p.replace("-", " ")}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Blended APY Display */}
@@ -194,6 +273,16 @@ export default function PortfolioBuilder({
         </div>
       )}
 
+      {/* Rebalance Simulation Sandbox */}
+      {totalAmount && Number(totalAmount) > 0 && (
+        <RebalancePreview
+          totalValueUsd={Number(totalAmount)}
+          currentAllocations={baselineAllocations}
+          targetAllocations={allocations}
+          disabled={!isValid}
+        />
+      )}
+
       {/* Error Display */}
       {error && (
         <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
@@ -201,6 +290,20 @@ export default function PortfolioBuilder({
           <span className="text-sm text-red-400">{error}</span>
         </div>
       )}
+
+      {/* Opt-in Checkbox */}
+      <div className="flex items-center gap-2 px-1">
+        <input
+          type="checkbox"
+          id="execute-tx-toggle"
+          checked={executeTx}
+          onChange={(e) => setExecuteTx(e.target.checked)}
+          className="rounded border-gray-600 bg-black/50 text-purple-600 focus:ring-purple-500"
+        />
+        <label htmlFor="execute-tx-toggle" className="text-sm text-gray-300">
+          Execute transaction on-chain (wallet signature required)
+        </label>
+      </div>
 
       {/* Execute Button */}
       <button

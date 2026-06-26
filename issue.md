@@ -1,78 +1,71 @@
-#209 Add backend metrics endpoint for API latency and cache status
+#714 Add checked arithmetic and property tests to the matching engine fee and settlement math
+Repo Avatar
+edehvictor/StellarYield
+Summary
+Matching and settlement calculations should use explicit arithmetic guarantees so fee and fill math cannot overflow, underflow, or drift silently.
+
+Scope
+Replace unchecked arithmetic in fee and settlement helpers
+Define and document rounding rules
+Add property-style or exhaustive edge-case tests
+Acceptance Criteria
+Math errors return explicit failures
+Settlement and fee invariants are covered by tests
+
+
+#719 Wire rewards Merkle generation to on-chain distributor verification with anti-double-claim tests
+Repo Avatar
+edehvictor/StellarYield
+Summary
+Connect off-chain reward tree generation to contract-side proof verification and claim tracking.
+
+Scope
+Define canonical reward leaf encoding
+Generate fixtures shared by server or scripts and contracts
+Prevent duplicate claims per campaign or epoch
+Acceptance Criteria
+Valid proofs verify on-chain
+Wrong recipient, wrong amount, or repeated claims are rejected
+
+#717 Remove browser-exposed secret configuration and add CI guardrails for frontend env variables
+Repo Avatar
+edehvictor/StellarYield
+Summary
+Audit public frontend environment variables and move secret-dependent behavior behind server-side endpoints.
+
+Scope
+Identify unsafe VITE_ secrets or privileged keys
+Move sensitive calls to server-owned routes
+Add CI checks for unsafe frontend env names
+Acceptance Criteria
+Frontend builds do not depend on privileged secrets
+CI fails when new browser-exposed secret patterns are introduced
+
+
+#248 Cross-Protocol Yield Opportunity Ranking Engine
 Repo Avatar
 edehvictor/StellarYield
 Description
-Operators should be able to inspect basic backend metrics such as request latency, cache age, and provider health.
+We need an engine that ranks live yield opportunities across supported Stellar DeFi protocols using APY, TVL, volatility, liquidity depth, and protocol risk signals.
 
 Acceptance Criteria
 
-Add a protected or development-only metrics endpoint.
-Track route latency, cache hit/miss counts, and provider status.
-Avoid exposing secrets or user private data.
-Add tests for metrics response shape.
+Build a backend ranking module that scores vault and liquidity opportunities across multiple protocols.
+Include configurable weighting for APY, liquidity, protocol maturity, and volatility.
+Expose a normalized ranked opportunities API for frontend consumption.
+Add tests covering score calculation, tie-breaking, and missing provider data.
 Technical Details
+Stack: Node.js, TypeScript, Express.
+Location: server/src/services/, server/src/routes/.
+Security: Rankings must not silently trust malformed or stale upstream data.
 
-Location: server/src/routes/, monitoring modules.
-Complexity and Scope
-Estimated Time: 2-4 days.
-Complexity: Medium.
+Complexity & Scope
+Estimated Time: 3-4 weeks.
+Drips Complexity: High (200 points).
 
-
-#210 Add data freshness indicators to yield cards
-Repo Avatar
-edehvictor/StellarYield
-Description
-Users should know when APY and TVL data was last updated so stale data is visible.
-
-Acceptance Criteria
-
-Display fetched-at or updated-at timestamps on yield cards.
-Show stale badges when data is older than the configured freshness window.
-Handle missing timestamps gracefully.
-Add tests for fresh, stale, and missing timestamp states.
-Technical Details
-
-Location: client/src/components/dashboard/, yield data types.
-Complexity and Scope
-Estimated Time: 1-2 days.
-Complexity: Low.
-
-#211 Add protocol risk badge explanations
-Repo Avatar
-edehvictor/StellarYield
-Description
-Risk scores should be understandable at a glance. Add short explanations for risk badges shown in protocol cards and AI advisor output.
-
-Acceptance Criteria
-
-Add tooltip or expandable explanation for risk score levels.
-Explain factors such as TVL, volatility, protocol maturity, and data freshness.
-Ensure explanations are accessible by keyboard.
-Add tests for rendering each risk level.
-Technical Details
-
-Location: dashboard cards, AI advisor components.
-Complexity and Scope
-Estimated Time: 1-2 days.
-Complexity: Low.
-
-#213 Add smoke test script for deployed frontend and backend
-Repo Avatar
-edehvictor/StellarYield
-Description
-After deployment, maintainers should be able to run a quick smoke test that verifies the public app and API are reachable.
-
-Acceptance Criteria
-
-Add a script that checks frontend URL, backend health, yield endpoint, and a simple static asset.
-Support configurable URLs via environment variables.
-Print clear pass/fail output.
-Document when to run the smoke test after merge or deploy.
-Technical Details
-
-Location: root scripts or scripts/ directory, README or release docs.
-Complexity and Scope
-Estimated Time: 1-2 days.
-Complexity: Low to Medium.
+Guidelines for Submission
+Minimum 90 percent test coverage required.
+Clear documentation must be added to public modules and route contracts.
+Timeframe for completion: 2 Wave cycles.
 
 

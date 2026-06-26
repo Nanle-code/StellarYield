@@ -2,12 +2,7 @@
  * Google Sheets API Tests
  */
 
-import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
-describe("Google Sheets API", () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
-    });
 
     it("should validate token exchange parameters", () => {
         const code = "auth-code";

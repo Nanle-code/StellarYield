@@ -8,8 +8,11 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { YieldFlowCanvas } from "../visualizations";
-
 import PortfolioVisualizer from "../visualizer/PortfolioVisualizer";
+import { ExposureMap } from "../../portfolio/ExposureMap";
+import PresetsPanel from "../../features/presets/PresetsPanel";
+import UnifiedActivityTimeline from "./UnifiedActivityTimeline";
+import PortfolioExport from "./PortfolioExport";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -124,12 +127,15 @@ export default function PortfolioDashboard({ walletAddress }: PortfolioDashboard
             {walletAddress.slice(0, 8)}...{walletAddress.slice(-8)}
           </p>
         </div>
-        <button
-          onClick={() => { setIsLoading(true); setTimeout(() => setIsLoading(false), 500); }}
-          className="btn-secondary flex items-center gap-2 text-sm"
-        >
-          <RefreshCw size={14} /> Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <PortfolioExport walletAddress={walletAddress} />
+          <button
+            onClick={() => { setIsLoading(true); setTimeout(() => setIsLoading(false), 500); }}
+            className="btn-secondary flex items-center gap-2 text-sm"
+          >
+            <RefreshCw size={14} /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -172,6 +178,25 @@ export default function PortfolioDashboard({ walletAddress }: PortfolioDashboard
       >
         <YieldFlowCanvas scene="portfolio" positions={positions} />
       </Suspense>
+
+      {/* Exposure Map */}
+      <ExposureMap 
+        data={{
+          byAsset: positions.reduce((acc, p) => {
+            acc[p.asset] = (acc[p.asset] || 0) + p.currentValue;
+            return acc;
+          }, {} as Record<string, number>),
+          byProtocol: positions.reduce((acc, p) => {
+            acc[p.protocol] = (acc[p.protocol] || 0) + p.currentValue;
+            return acc;
+          }, {} as Record<string, number>),
+          totalValue: totalValue,
+          warnings: totalValue > 0 && positions.some(p => p.currentValue / totalValue > 0.5) 
+            ? ["High concentration (>50%) detected in a single position."] 
+            : []
+        }}
+      />
+
       {/* 3D Visualizer Integration */}
       <PortfolioVisualizer />
 
@@ -213,6 +238,13 @@ export default function PortfolioDashboard({ walletAddress }: PortfolioDashboard
           </table>
         </div>
       </div>
+
+      {/* Allocation Presets */}
+      <div className="glass-panel p-6">
+        <PresetsPanel walletAddress={walletAddress} />
+      </div>
+
+      <UnifiedActivityTimeline walletAddress={walletAddress} />
 
       {/* Transaction History */}
       <div className="glass-panel p-6">

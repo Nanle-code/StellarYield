@@ -1,47 +1,29 @@
-## Summary
+## Description
+<!-- Describe your changes in detail -->
+Fixes # (issue number)
 
-<!-- Describe what this PR changes and why. One paragraph is enough. -->
+## Type of Change
+- [ ] Bug fix (non-breaking change which fixes an issue)
+- [ ] New feature (non-breaking change which adds functionality)
+- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] Documentation update
 
-Closes #<!-- issue number -->
+## Verification Commands
+<!-- Check the boxes after you run the verification commands -->
+- [ ] `npm run lint` / `npm run test` (Frontend/Backend)
+- [ ] `cargo fmt` / `cargo clippy` / `cargo test` (Smart Contracts)
+### Contract Security (if `contracts/` changed)
+- [ ] Storage schema changes documented or migration provided
+- [ ] All entry points have authorization checks
+- [ ] Arithmetic uses checked operations
+- [ ] New entry points have unit tests including unauthorized callers
+- [ ] No new admin roles without governance proposal
 
-## Change type
+## Screenshots (if applicable)
+Add screenshots to help explain the changes.
 
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Refactor / cleanup
-- [ ] Documentation
-- [ ] CI / tooling
-- [ ] Contract change
-
-## Areas affected
-
-- [ ] Frontend (`client/`)
-- [ ] Backend (`server/`)
-- [ ] Contracts (`contracts/`)
-- [ ] Docs
-- [ ] CI / GitHub Actions
-- [ ] Database migrations
-
-## Testing
-
-<!-- Describe how you tested this change. -->
-
-- [ ] Unit tests pass (`npm test` / `cargo test`)
-- [ ] Manually verified on local environment
-- [ ] New tests added for new functionality
-
-## Screenshots / logs
-
-<!-- If this is a UI change, paste a screenshot. Otherwise delete this section. -->
-
-## Deployment notes
-
-<!-- Anything the reviewer or deployer should know: env vars, migrations, contract upgrades. -->
-<!-- Delete this section if not applicable. -->
-
-## Checklist
-
-- [ ] Self-reviewed the diff
-- [ ] No secrets or credentials committed
-- [ ] PR title follows the repo convention
-- [ ] Linked the issue above
+## UI Snapshot Checklist
+<!-- If your PR changes the UI, check the applicable boxes. Otherwise, check "No visual changes." -->
+- [ ] Screenshots provided for Desktop (1024px+)
+- [ ] Screenshots provided for Mobile (375px)
+- [ ] No visual changes

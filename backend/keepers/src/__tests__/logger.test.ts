@@ -28,6 +28,7 @@ describe('logger utility', () => {
     process.env.NODE_ENV = originalEnv;
   });
 
+
   test('logger instance is exported correctly', () => {
     const { logger } = require('../utils/logger');
     expect(logger).toBeDefined();

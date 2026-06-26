@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useWallet } from "../../context/useWallet";
-import { Gift, CheckCircle, Loader2, AlertCircle } from "lucide-react";
+import { Gift, CheckCircle, Loader2 } from "lucide-react";
 import { getApiBaseUrl } from "../../lib/api";
+import ApiErrorBanner from "../../components/ApiErrorBanner/ApiErrorBanner";
 
 interface ClaimData {
   index: number;
@@ -9,7 +10,13 @@ interface ClaimData {
   proof: string[];
 }
 
-const API_BASE = getApiBaseUrl();
+const getApiBase = () => {
+  try {
+    return getApiBaseUrl();
+  } catch {
+    return "";
+  }
+};
 
 /**
  * ClaimRewards — Frontend UI for claiming Merkle-tree distributed $YIELD rewards.
@@ -32,7 +39,7 @@ export default function ClaimRewards() {
 
     try {
       const res = await fetch(
-        `${API_BASE}/api/rewards/proof/${encodeURIComponent(walletAddress)}`,
+        `${getApiBase()}/api/rewards/proof/${encodeURIComponent(walletAddress)}`,
       );
       if (res.status === 404) {
         setClaimData(null);
@@ -65,7 +72,7 @@ export default function ClaimRewards() {
     setError(null);
 
     try {
-      const res = await fetch(`${API_BASE}/api/rewards/claim`, {
+      const res = await fetch(`${getApiBase()}/api/rewards/claim`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -134,10 +141,7 @@ export default function ClaimRewards() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-6">
-          <AlertCircle className="text-red-400 shrink-0" size={20} />
-          <p className="text-red-400 text-sm">{error}</p>
-        </div>
+        <ApiErrorBanner message={error} onRetry={fetchClaimData} className="mb-6" />
       )}
 
       {!claimData ? (

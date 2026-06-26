@@ -8,6 +8,9 @@ import {
 } from "../middleware/audit";
 import { uploadVaultMetadata } from "../services/ipfs/vaultMetadataService";
 import { freezeService } from "../services/freezeService";
+import { parsePaginationLimit, type PaginatedResponse } from "../types/pagination";
+import { PROTOCOLS } from "../config/protocols";
+import { strategyStateTransitionAuditService } from "../services/strategyStateTransitionAuditService";
 
 const adminRouter = Router();
 
@@ -285,7 +288,9 @@ adminRouter.get(
   requireAdmin,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { userId, action, resource, startDate, endDate, limit } = req.query;
+      const { userId, action, resource, startDate, endDate, limit, cursor } = req.query;
+
+      const effectiveLimit = parsePaginationLimit(limit);
 
       const logs = await getAuditLogs({
         userId: userId as string,
@@ -293,14 +298,20 @@ adminRouter.get(
         resource: resource as string,
         startDate: startDate as string,
         endDate: endDate as string,
-        limit: limit ? parseInt(limit as string) : undefined,
+        limit: effectiveLimit + 1,
+        cursor: cursor as string | undefined,
       });
 
-      res.json({
-        success: true,
-        count: logs.length,
-        logs,
-      });
+      const hasMore = logs.length > effectiveLimit;
+      const page = hasMore ? logs.slice(0, effectiveLimit) : logs;
+      const nextCursor = hasMore ? page[page.length - 1].id : null;
+
+      const response: PaginatedResponse<(typeof page)[0]> = {
+        data: page,
+        pagination: { nextCursor, hasMore, limit: effectiveLimit },
+      };
+
+      res.json(response);
     } catch (error) {
       res.status(500).json({
         error:
@@ -500,8 +511,34 @@ adminRouter.post(
       let state;
       if (protocol) {
         state = await freezeService.freezeProtocol(protocol, reason, actor);
+
+        // #371 operator intervention: record lifecycle transition to frozen.
+        try {
+          strategyStateTransitionAuditService.recordOperatorIntervention(
+            String(protocol).toLowerCase(),
+            "frozen",
+            `freeze_reason=${reason}`,
+            actor,
+          );
+        } catch (err) {
+          console.warn("Failed to record frozen transition:", err);
+        }
       } else {
         state = await freezeService.freezeGlobal(reason, actor);
+
+        // #371 operator intervention: record frozen transition for all known strategies.
+        for (const p of PROTOCOLS) {
+          try {
+            strategyStateTransitionAuditService.recordOperatorIntervention(
+              p.protocolName.toLowerCase(),
+              "frozen",
+              `freeze_reason=${reason}`,
+              actor,
+            );
+          } catch {
+            // Best-effort only; never break the admin endpoint.
+          }
+        }
       }
 
       setAuditContext(req, {
@@ -533,8 +570,33 @@ adminRouter.post(
       let state;
       if (protocol) {
         state = await freezeService.resumeProtocol(protocol, actor);
+
+        // #371 operator intervention: record lifecycle transition to recovered.
+        try {
+          strategyStateTransitionAuditService.recordOperatorIntervention(
+            String(protocol).toLowerCase(),
+            "recovered",
+            "resume_reason=operator",
+            actor,
+          );
+        } catch (err) {
+          console.warn("Failed to record recovered transition:", err);
+        }
       } else {
         state = await freezeService.resumeGlobal(actor);
+
+        for (const p of PROTOCOLS) {
+          try {
+            strategyStateTransitionAuditService.recordOperatorIntervention(
+              p.protocolName.toLowerCase(),
+              "recovered",
+              "resume_reason=operator",
+              actor,
+            );
+          } catch {
+            // Best-effort only; never break the admin endpoint.
+          }
+        }
       }
 
       setAuditContext(req, {

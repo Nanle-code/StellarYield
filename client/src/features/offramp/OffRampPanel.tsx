@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import TxStatusTimeline from "../../components/transaction/TxStatusTimeline";
 import type { TxPhase } from "../../services/transactionPhase";
+import { ExitImpactEstimator } from "../ExitImpactEstimator";
 import { OffRampService } from "./offRampService";
 import type { OffRampTransaction, WithdrawalRequest } from "./types";
 
@@ -37,16 +38,24 @@ export default function OffRampPanel({
   const [transactions, setTransactions] = useState<OffRampTransaction[]>([]);
   const [error, setError] = useState("");
 
-  const service = new OffRampService(
-    "moonpay",
-    import.meta.env.VITE_OFFRAMP_API_KEY || "",
-    import.meta.env.VITE_OFFRAMP_BASE_URL || "https://api.moonpay.com",
-  );
+  // API key and base URL are managed server-side in /api/offramp proxy.
+  const service = new OffRampService("moonpay");
 
-  // Load transaction history
+  // Load transaction history and auto-resume pending
   useEffect(() => {
-    setTransactions(service.getAllTransactions());
-  }, []);
+    const history = service.getAllTransactions();
+    setTransactions(history);
+
+    // Auto-resume most recent pending transaction if any
+    const pending = history
+      .filter((t) => t.status === "pending")
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+
+    if (pending && txPhase === "idle") {
+      setCurrentTxId(pending.id);
+      setTxPhase("polling");
+    }
+  }, [txPhase]);
 
   // Poll current transaction status
   useEffect(() => {
@@ -110,6 +119,20 @@ export default function OffRampPanel({
     accountHolder,
     vaultContractId,
   ]);
+
+  const handleRetry = useCallback(async (txId: string) => {
+    setError("");
+    setTxPhase("submitting");
+    try {
+      const tx = await service.retryTransaction(txId);
+      setCurrentTxId(tx.id);
+      setTxPhase("polling");
+      setTransactions(service.getAllTransactions());
+    } catch (err) {
+      setTxPhase("failure");
+      setError(err instanceof Error ? err.message : "Retry failed");
+    }
+  }, []);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -197,10 +220,28 @@ export default function OffRampPanel({
           </div>
         </div>
 
+        {usdcAmount && Number(usdcAmount) > 0 && (
+          <ExitImpactEstimator 
+            amountUsd={Number(usdcAmount)} 
+            poolLiquidityUsd={1000000} // Mock liquidity depth
+            exitFeeBps={50} // 0.5% mock fee
+          />
+        )}
+
         {error && (
-          <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-            <AlertCircle className="w-5 h-5 text-red-500" />
-            <span className="text-sm text-red-400">{error}</span>
+          <div className="flex items-center justify-between p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-red-500" />
+              <span className="text-sm text-red-400">{error}</span>
+            </div>
+            {currentTxId && transactions.find(t => t.id === currentTxId)?.isRetryable && (
+              <button
+                onClick={() => handleRetry(currentTxId)}
+                className="text-xs font-bold text-red-500 underline hover:text-red-400"
+              >
+                Retry
+              </button>
+            )}
           </div>
         )}
 
@@ -222,6 +263,18 @@ export default function OffRampPanel({
             phase={txPhase}
             errorMessage={error}
           />
+          {txPhase === "failure" && (
+             <button
+               onClick={() => {
+                 setTxPhase("idle");
+                 setError("");
+                 setCurrentTxId(null);
+               }}
+               className="mt-4 text-xs text-gray-400 hover:text-white"
+             >
+               ← Start New Withdrawal
+             </button>
+          )}
         </div>
       )}
 
@@ -230,7 +283,7 @@ export default function OffRampPanel({
         <div className="glass-panel p-6 space-y-4">
           <h3 className="text-lg font-semibold">Recent Withdrawals</h3>
           <div className="space-y-3">
-            {transactions.slice(-5).map((tx) => (
+            {transactions.slice().reverse().slice(0, 5).map((tx) => (
               <div
                 key={tx.id}
                 className="flex items-center justify-between p-3 bg-black/30 rounded-lg"
@@ -244,9 +297,31 @@ export default function OffRampPanel({
                     </p>
                   </div>
                 </div>
-                <span className="text-xs font-semibold text-gray-400 capitalize">
-                  {tx.status}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-semibold text-gray-400 capitalize">
+                    {tx.status}
+                  </span>
+                  {tx.status === "failed" && tx.isRetryable && (
+                    <button
+                      onClick={() => handleRetry(tx.id)}
+                      className="p-1 rounded hover:bg-white/10"
+                      title="Retry"
+                    >
+                      <ArrowRight className="w-4 h-4 text-purple-400" />
+                    </button>
+                  )}
+                  {tx.status === "pending" && tx.id !== currentTxId && (
+                    <button
+                      onClick={() => {
+                        setCurrentTxId(tx.id);
+                        setTxPhase("polling");
+                      }}
+                      className="text-[10px] text-blue-400 hover:underline"
+                    >
+                      Resume
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
